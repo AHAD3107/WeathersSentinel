@@ -141,6 +141,11 @@ mnesia/
 rabbitmq/
 rabbitmq-data/
 
+# Raw weather datasets
+data/raw/*
+data/processed/*
+data/external/*
+
 # ActiveMQ
 activemq-data/
 

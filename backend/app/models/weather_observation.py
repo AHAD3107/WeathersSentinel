@@ -2,8 +2,9 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+
+from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String,UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -11,6 +12,27 @@ from app.database import Base
 
 class WeatherObservation(Base):
     __tablename__ = "weather_observations"
+
+    __table_args__ = (
+        Index(
+            "idx_weather_observations_location_id",
+            "location_id",
+        ),
+        Index(
+            "idx_weather_observations_observed_at",
+            "observed_at",
+        ),
+        Index(
+            "idx_weather_observations_source",
+            "source",
+        ),
+        UniqueConstraint(
+            "location_id",
+            "source",
+            "observed_at",
+            name="uq_weather_observation_location_source_time",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
