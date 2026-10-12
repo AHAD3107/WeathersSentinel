@@ -1,0 +1,66 @@
+{
+  "task": "3-hour-ahead temperature regression",
+  "location": "Pune, India",
+  "data_year": 2024,
+  "records_used": 2725,
+  "features": [
+    "temperature_c",
+    "dew_point_c",
+    "pressure_hpa",
+    "wind_speed_ms",
+    "wind_direction",
+    "hour",
+    "day_of_week",
+    "month"
+  ],
+  "target": "target_temperature_c",
+  "split": {
+    "strategy": "chronological 70/15/15",
+    "train_records": 1907,
+    "validation_records": 409,
+    "test_records": 409,
+    "train_start": "2024-01-01T03:00:00",
+    "train_end": "2024-09-12T06:00:00",
+    "validation_start": "2024-09-12T09:00:00",
+    "validation_end": "2024-11-04T03:00:00",
+    "test_start": "2024-11-04T06:00:00",
+    "test_end": "2024-12-31T21:00:00"
+  },
+  "validation_metrics": {
+    "persistence_baseline": {
+      "mae_c": 2.2225,
+      "rmse_c": 2.8587,
+      "r2": 0.308
+    },
+    "ridge_regression": {
+      "mae_c": 2.4357,
+      "rmse_c": 3.039,
+      "r2": 0.218
+    },
+    "random_forest": {
+      "mae_c": 1.0553,
+      "rmse_c": 1.4738,
+      "r2": 0.8161
+    }
+  },
+  "test_metrics": {
+    "persistence_baseline": {
+      "mae_c": 3.444,
+      "rmse_c": 4.4943,
+      "r2": 0.3735
+    },
+    "random_forest": {
+      "mae_c": 1.5096,
+      "rmse_c": 2.221,
+      "r2": 0.847
+    }
+  },
+  "selected_model": "random_forest",
+  "test_mae_improvement_percent": 56.17,
+  "beats_baseline_on_test": true,
+  "limitations": [
+    "Historical data from one Pune station in 2024 only.",
+    "Does not establish national forecast accuracy.",
+    "Historical evaluation does not prove real-time accuracy."
+  ]
+}

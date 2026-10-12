@@ -12,9 +12,12 @@ dependencies = [
     "confluent-kafka>=2.15.1",
     "fastapi>=0.142.2",
     "geoalchemy2>=0.20.0",
+    "joblib>=1.6.0",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.15.0",
+    "pyspark>=4.2.0",
     "python-dotenv>=1.2.3",
+    "scikit-learn>=1.9.1",
     "sqlalchemy>=2.1.1",
     "uvicorn>=0.54.0",
 ]
