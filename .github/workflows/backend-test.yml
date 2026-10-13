@@ -3,12 +3,14 @@ name: WeatherSentinel Backend Tests
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
       - "backend/**"
       - ".github/workflows/backend-test.yml"
   pull_request:
-    branches: [main]
+    branches:
+      - main
     paths:
       - "backend/**"
       - ".github/workflows/backend-test.yml"
