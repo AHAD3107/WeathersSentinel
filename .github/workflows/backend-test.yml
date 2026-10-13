@@ -1,4 +1,4 @@
-
+```yaml
 name: WeatherSentinel Backend Tests
 
 on:
@@ -6,12 +6,12 @@ on:
     branches: [main]
     paths:
       - "backend/**"
-      - ".github/workflows/backend-tests.yml"
+      - ".github/workflows/backend-test.yml"
   pull_request:
     branches: [main]
     paths:
       - "backend/**"
-      - ".github/workflows/backend-tests.yml"
+      - ".github/workflows/backend-test.yml"
 
 jobs:
   test:
@@ -39,3 +39,4 @@ jobs:
 
       - name: Run backend tests
         run: uv run --locked pytest -q
+```
