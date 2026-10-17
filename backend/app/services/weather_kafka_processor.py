@@ -1,6 +1,6 @@
 
-from datetime import datetime
-from decimal import Decimal
+from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -18,27 +18,67 @@ from app.services.weather_validation_service import validate_observation
 def _to_decimal(value):
     if value is None:
         return None
-    return Decimal(str(value))
+
+    number = Decimal(str(value))
+
+    if not number.is_finite():
+        raise ValueError(
+            f"Weather numeric value must be finite, got {value!r}"
+        )
+
+    return number
 
 
-def process_weather_message(
-    db: Session,
-    message: dict,
-) -> dict:
-    """Validate and persist a Kafka observation, detect events, and forecast."""
-    location_id = UUID(str(message["location_id"]))
-    source = str(message["source"])
-    observed_at = datetime.fromisoformat(message["observed_at"])
+def _parse_timestamp(value: str) -> datetime:
+    """Parse an observation timestamp and normalize it to UTC."""
+    timestamp = datetime.fromisoformat(value)
 
-    temperature = _to_decimal(message.get("temperature"))
-    pressure = _to_decimal(message.get("pressure"))
-    rainfall = _to_decimal(message.get("rainfall"))
-    wind_speed = _to_decimal(message.get("wind_speed"))
-    wind_direction = _to_decimal(message.get("wind_direction"))
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=timezone.utc)
+
+    return timestamp.astimezone(timezone.utc)
+
+
+def process_weather_message(db: Session, message: dict) -> dict:
+    """Validate and persist an observation, detect events, and forecast."""
+    if not isinstance(message, dict):
+        return {
+            "status": "validation_failed",
+            "errors": ["Weather message must be a JSON object."],
+        }
+
+    try:
+        location_id = UUID(str(message["location_id"]))
+
+        raw_source = message["source"]
+        if not isinstance(raw_source, str) or not raw_source.strip():
+            raise ValueError("source must be a non-empty string")
+        source = raw_source.upper()
+
+        observed_at = _parse_timestamp(message["observed_at"])
+
+        temperature = _to_decimal(message.get("temperature"))
+        humidity = _to_decimal(message.get("humidity"))
+        pressure = _to_decimal(message.get("pressure"))
+        rainfall = _to_decimal(message.get("rainfall"))
+        wind_speed = _to_decimal(message.get("wind_speed"))
+        wind_direction = _to_decimal(message.get("wind_direction"))
+
+    except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
+        return {
+            "status": "validation_failed",
+            "errors": [f"Invalid message structure or field value: {exc}"],
+        }
+
+    # Open-Meteo reports wind speed in km/h. NOAA ISD-Lite
+    # values are already in m/s and must not be converted again.
+    if source == "OPEN_METEO" and wind_speed is not None:
+        wind_speed = wind_speed / Decimal("3.6")
 
     is_valid, errors = validate_observation(
         observed_at=observed_at,
         temperature=temperature,
+        humidity=humidity,
         pressure=pressure,
         rainfall=rainfall,
         wind_speed=wind_speed,
@@ -57,19 +97,17 @@ def process_weather_message(
         )
         .first()
     )
-
     if existing is not None:
-        return {
-            "status": "duplicate",
-            "observation_id": str(existing.id),
-        }
+        return {"status": "duplicate", "observation_id": str(existing.id)}
 
+    # Keep source units in raw_data for traceability, while the normalized
+    # database field wind_speed is always stored in m/s.
     observation = WeatherObservation(
         location_id=location_id,
         source=source,
         observed_at=observed_at,
         temperature=temperature,
-        humidity=_to_decimal(message.get("humidity")),
+        humidity=humidity,
         pressure=pressure,
         rainfall=rainfall,
         wind_speed=wind_speed,
@@ -81,6 +119,8 @@ def process_weather_message(
     db.add(observation)
 
     try:
+        # Flush inside a savepoint so a uniqueness race can be handled
+        # without invalidating the outer transaction.
         with db.begin_nested():
             db.flush()
     except IntegrityError:
@@ -94,83 +134,76 @@ def process_weather_message(
             .first()
         )
         if existing is not None:
-            return {
-                "status": "duplicate",
-                "observation_id": str(existing.id),
-            }
+            return {"status": "duplicate", "observation_id": str(existing.id)}
         raise
 
-    events = create_events_from_observation(
-        db=db,
-        observation=observation,
-    )
+    events = create_events_from_observation(db=db, observation=observation)
 
-    # Match the exact feature names used during model training.
-    # Open-Meteo provides wind speed in km/h; the model expects m/s.
-    timestamp = observed_at
-    if timestamp.tzinfo is not None:
-        timestamp = timestamp.astimezone().replace(tzinfo=None)
+    # Use UTC consistently for time-derived model features.
+    raw_dew_point = message.get("dew_point_c")
+    if raw_dew_point is None:
+        raw_dew_point = message.get("dew_point")
 
     prediction_input = {
-        "temperature_c": (
-            float(temperature) if temperature is not None else None
-        ),
-        # Open-Meteo's current request does not include dew point.
-        # The trained median imputer handles this missing feature.
-        "dew_point_c": None,
-        "pressure_hpa": (
-            float(pressure) if pressure is not None else None
-        ),
-        "wind_speed_ms": (
-            float(wind_speed) / 3.6 if wind_speed is not None else None
-        ),
-        "wind_direction": (
-            float(wind_direction)
-            if wind_direction is not None
+        "temperature_c": float(temperature) if temperature is not None else None,
+        "dew_point_c": (
+            float(_to_decimal(raw_dew_point))
+            if raw_dew_point is not None
             else None
         ),
-        "hour": timestamp.hour,
-        "day_of_week": timestamp.weekday(),
-        "month": timestamp.month,
+        "pressure_hpa": float(pressure) if pressure is not None else None,
+        "wind_speed_ms": float(wind_speed) if wind_speed is not None else None,
+        "wind_direction": (
+            float(wind_direction) if wind_direction is not None else None
+        ),
+        "hour": observed_at.hour,
+        # Match PySpark dayofweek(): Sunday=1 through Saturday=7.
+        "day_of_week": ((observed_at.weekday() + 1) % 7) + 1,
+        "month": observed_at.month,
     }
 
     forecast_result = None
     prediction_error = None
 
     try:
-        prediction = temperature_prediction_service.predict(
-            prediction_input
-        )
+        # Isolate forecast writes from observation and event writes.
+        with db.begin_nested():
+            prediction = temperature_prediction_service.predict(
+                prediction_input
+            )
 
-        forecast = TemperatureForecast(
-            observation_id=observation.id,
-            model_name=str(prediction["model"]),
-            location=str(prediction["location"]),
-            forecast_horizon_hours=int(
-                prediction["forecast_horizon_hours"]
-            ),
-            predicted_temperature_c=Decimal(
-                str(prediction["predicted_temperature_c"])
-            ),
-        )
-        db.add(forecast)
-        db.flush()
+            forecast = TemperatureForecast(
+                observation_id=observation.id,
+                model_name=str(prediction["model"]),
+                location=str(prediction["location"]),
+                forecast_horizon_hours=int(
+                    prediction["forecast_horizon_hours"]
+                ),
+                predicted_temperature_c=Decimal(
+                    str(prediction["predicted_temperature_c"])
+                ),
+            )
+            db.add(forecast)
+            db.flush()
 
-        forecast_result = {
-            "forecast_id": str(forecast.id),
-            "model": forecast.model_name,
-            "forecast_horizon_hours": forecast.forecast_horizon_hours,
-            "predicted_temperature_c": float(
-                forecast.predicted_temperature_c
-            ),
-        }
-
+            forecast_result = {
+                "forecast_id": str(forecast.id),
+                "model": forecast.model_name,
+                "forecast_horizon_hours": forecast.forecast_horizon_hours,
+                "predicted_temperature_c": float(
+                    forecast.predicted_temperature_c
+                ),
+            }
     except Exception as exc:
-        # Do not lose a valid weather observation because the ML step failed.
+        # Preserve the outer transaction if forecast creation fails.
         prediction_error = str(exc)
 
-    db.commit()
-    db.refresh(observation)
+    try:
+        db.commit()
+        db.refresh(observation)
+    except Exception:
+        db.rollback()
+        raise
 
     result = {
         "status": "processed",

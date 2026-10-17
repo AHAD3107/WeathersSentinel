@@ -224,3 +224,7 @@ __marimo__/
 
 # Local Python environment backups
 backend/.venv-linux-backup/
+
+# Local configuration and source backups
+backend/.env.env.backup
+backend/app/config.py.bak

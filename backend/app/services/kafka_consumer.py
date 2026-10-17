@@ -6,6 +6,8 @@ from confluent_kafka import Consumer
 KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
 WEATHER_OBSERVATIONS_TOPIC = "weather.observations"
 
+INVALID_MESSAGE_MARKER = "__weathersentinel_invalid_message__"
+
 
 consumer = Consumer(
     {
@@ -20,43 +22,58 @@ consumer.subscribe([WEATHER_OBSERVATIONS_TOPIC])
 
 
 def consume_weather_observations():
-    """
-    Consume weather messages from Kafka.
-
-    Yields:
-        tuple:
-            (decoded_message, kafka_message)
-
-    The Kafka message is returned so the worker can
-    manually commit the offset only after successful processing.
-    """
+    """Yield a decoded payload and its original Kafka message."""
 
     try:
         while True:
-            message = consumer.poll(1.0)
+            kafka_message = consumer.poll(1.0)
 
-            if message is None:
+            if kafka_message is None:
                 continue
 
-            if message.error():
+            if kafka_message.error():
                 raise RuntimeError(
-                    f"Kafka consumer error: {message.error()}"
+                    f"Kafka consumer error: {kafka_message.error()}"
                 )
 
-            payload = json.loads(
-                message.value().decode("utf-8")
-            )
+            raw_value = kafka_message.value()
 
-            yield payload, message
+            if raw_value is None:
+                payload = {
+                    INVALID_MESSAGE_MARKER: {
+                        "reason": "empty_message",
+                        "error": "Kafka message has no value.",
+                    }
+                }
+            else:
+                try:
+                    decoded = json.loads(raw_value.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    payload = {
+                        INVALID_MESSAGE_MARKER: {
+                            "reason": "invalid_json",
+                            "error": str(exc),
+                        }
+                    }
+                else:
+                    if isinstance(decoded, dict):
+                        payload = decoded
+                    else:
+                        payload = {
+                            INVALID_MESSAGE_MARKER: {
+                                "reason": "invalid_json_structure",
+                                "error": "JSON payload must be an object.",
+                            }
+                        }
+
+            yield payload, kafka_message
 
     finally:
         consumer.close()
 
 
 def commit_weather_message(message) -> None:
-    """
-    Commit a Kafka message offset after successful processing.
-    """
+    """Commit a Kafka offset only after processing or DLQ delivery."""
 
     consumer.commit(
         message=message,
