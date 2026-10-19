@@ -24,7 +24,7 @@ ALLOWED_STATUSES = {
 
 
 class CitizenReportCreate(BaseModel):
-    user_id: UUID
+    user_id: UUID | None = None
     location_id: UUID
     event_type: str = Field(min_length=1, max_length=30)
     description: str = Field(min_length=5)

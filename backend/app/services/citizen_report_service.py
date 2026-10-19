@@ -4,6 +4,8 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.citizen_report import CitizenReport
+from app.models.location import Location
+from app.models.user import User
 from app.schemas.citizen_report import CitizenReportCreate
 
 
@@ -11,9 +13,44 @@ def create_citizen_report(
     db: Session,
     data: CitizenReportCreate,
 ) -> CitizenReport:
+    # 1. Validate location existence
+    location = db.query(Location).filter(Location.id == data.location_id).first()
+    if location is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Location with ID '{data.location_id}' does not exist.",
+        )
+
+    # 2. Resolve or validate user
+    user_id = data.user_id
+    if user_id is None:
+        user = (
+            db.query(User)
+            .filter(User.is_active == True)
+            .order_by(User.created_at.asc())
+            .first()
+        )
+        if user is None:
+            user = User(
+                name="Citizen Reporter",
+                email="citizen@weathersentinel.local",
+                password_hash="system-default",
+                role="citizen",
+                is_active=True,
+            )
+            db.add(user)
+            db.flush()
+        user_id = user.id
+    else:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"User with ID '{user_id}' does not exist.",
+            )
 
     report = CitizenReport(
-        user_id=data.user_id,
+        user_id=user_id,
         location_id=data.location_id,
         event_type=data.event_type,
         description=data.description,

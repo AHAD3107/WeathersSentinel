@@ -228,3 +228,6 @@ backend/.venv-linux-backup/
 # Local configuration and source backups
 backend/.env.env.backup
 backend/app/config.py.bak
+pipelines/spark/noaa_processor_backup.py
+backend/.venv-linux-broken/
+opencode.json

@@ -1,0 +1,45 @@
+name: WeatherSentinel Frontend CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-test.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-test.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: frontend/uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.14
+
+      - name: Install frontend dependencies
+        run: uv sync
+
+      - name: Verify frontend syntax and compilation
+        run: uv run python -m py_compile app.py
+
+      - name: Run frontend automated tests
+        run: uv run pytest -q

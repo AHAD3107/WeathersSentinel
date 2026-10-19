@@ -187,30 +187,94 @@ The current workflow includes:
 
 The repository contains the pipeline code, trained model, and evaluation report. The historical datasets themselves are not committed, so reproducing the training results requires obtaining the source data and rebuilding the processed datasets.
 
+## 🖥️ Running the NiceGUI Frontend
+
+WeatherSentinel includes an interactive dark-themed NiceGUI frontend featuring an interactive geospatial map, severe event monitoring, citizen verification, and ML forecast analytics.
+
+### 1. Install frontend dependencies
+
+```powershell
+cd frontend
+uv sync
+```
+
+### 2. Configure API connection (Optional)
+
+By default, the frontend connects to `http://127.0.0.1:8000`. You can configure a custom backend URL in `frontend/.env`:
+
+```env
+WEATHERSENTINEL_API_URL=http://127.0.0.1:8000
+```
+
+### 3. Launch the frontend application
+
+```powershell
+uv run python app.py
+```
+
+The frontend will be available at:
+
+**http://127.0.0.1:8081**
+
+### 4. Run automated tests
+
+```powershell
+# Frontend integration & coordinate logic tests
+cd frontend
+uv run pytest -v
+
+# Backend test suite
+cd ../backend
+uv run pytest -q
+```
+
+---
+
+## 🧭 SIH Demonstration Workflow
+
+For evaluators and live demonstrations, follow this recommended walkthrough:
+
+1. **System Health & Connectivity:**
+   - Open **http://127.0.0.1:8081/**.
+   - The top navigation bar displays a live health indicator with round-trip API latency.
+2. **Interactive Geospatial Intelligence (`/map`):**
+   - Click **"Geospatial Map"** or navigate to `/map`.
+   - Real-time station observations are mapped with cyan markers.
+   - Detected severe weather events are rendered with severity-coded overlays (red for extreme/high, amber for medium).
+   - Click any marker to view atmospheric measurements (temperature, humidity, wind speed, pressure, rainfall) in the live Telemetry Inspector.
+   - Filter by data source (Open-Meteo, NOAA) or hazard severity.
+3. **Severe Weather Event Detection (`/events`):**
+   - Navigate to `/events` to review detected multi-hazard events.
+   - Examine rule-based detection outputs, confidence scores, and time ranges.
+4. **Citizen Weather Verification Hub (`/verification`):**
+   - Navigate to `/verification` to review crowdsourced weather reports.
+   - Click **"Run Verification"** on pending reports to trigger the rule-based verification engine that cross-validates ground reports against nearby station telemetry within a 1-hour time window.
+   - View the calculated credibility score, status (`likely_valid`, `uncertain`, `likely_misleading`), and supporting telemetry evidence count.
+5. **Temperature Forecast Analytics (`/dashboard`):**
+   - Navigate to `/dashboard` to inspect Random Forest ML temperature forecasts, summary metrics, and the interactive Plotly trend chart.
+
+---
+
 ## 📍 Current progress and what's next
 
-Here's where the project stands today.
+Here's where the platform stands:
 
 ### Implemented
 
-- [x] NOAA ISD-Lite parsing and processing
-- [x] PySpark feature engineering and dataset preparation
+- [x] NOAA ISD-Lite parsing, validation, and ingestion
+- [x] PySpark feature engineering and model training
 - [x] Kafka-based weather observation ingestion
-- [x] PostgreSQL and PostGIS integration
-- [x] Configurable rule-based weather event detection
-- [x] Three-hour temperature prediction model
-- [x] FastAPI prediction endpoint
-- [x] Forecast persistence in PostgreSQL
+- [x] PostgreSQL 17 and PostGIS spatial storage
+- [x] Automated rule-based weather event detection
+- [x] Random Forest 3-hour temperature prediction model
+- [x] FastAPI REST backend with observation, event, verification, and forecast endpoints
+- [x] Interactive NiceGUI geospatial intelligence dashboard with Leaflet mapping
+- [x] Weather event monitoring with severity classification
+- [x] Citizen weather report verification hub with automated credibility assessment
+- [x] Real-time backend connectivity and health indicator
+- [x] Automated integration test suites for backend and frontend
+- [x] GitHub Actions CI workflows for backend and frontend
 
-### Still working toward
-
-- [ ] Broader automated testing of the API and database workflows
-- [ ] More reproducible setup instructions for new environments
-- [ ] Evaluation across additional weather stations and time periods
-- [ ] Improved model error analysis and monitoring
-- [ ] A more complete frontend dashboard
-- [ ] Expanded geospatial analytics and weather-event verification
-- [ ] Deployment automation and production monitoring
 
 ## ⚠️ Limitations
 
